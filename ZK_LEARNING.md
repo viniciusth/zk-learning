@@ -1,27 +1,28 @@
 # ZK Learning Task List
 
-**Goal:** Build ZK proof systems from first principles — R1CS → QAP → Sum-check → Spartan → Jolt.
+**Goal:** Build ZK proof systems from first principles — R1CS → MLE → Sum-check → Spartan → Lasso → Jolt.
 
 **Stack:** Rust + `ark-ff`, `ark-poly`, `ark-std` in `/home/vinith/rust-fun`
 
-**Progression:** Each phase builds on the last. Don't skip ahead — the math compounds.
+**Progression:** Phases 0–2 and 4–8b are the critical Jolt path. Phases 2.5 and 3 are optional (Groth16/pairing-based world — interesting but not needed for Jolt).
 
 ---
 
 ## Module Map
 
-| Phase | File                  | Topic                          |
-|-------|-----------------------|--------------------------------|
-| 0     | `src/fields.rs`       | Finite Field Arithmetic        |
-| 1     | `src/r1cs.rs`         | R1CS                           |
-| 2     | `src/poly.rs`         | Univariate Polynomials         |
-| 3     | `src/qap.rs`          | QAP                            |
-| 4     | `src/mle.rs`          | Multilinear Extensions         |
-| 5     | `src/sumcheck.rs`     | Sum-Check Protocol             |
-| 6     | `src/spartan.rs`      | Spartan                        |
-| 7     | `src/commitments.rs`  | Polynomial Commitments         |
-| 8a    | `src/lasso.rs`        | Lasso (Lookup Arguments)       |
-| 8b    | `src/jolt.rs`         | Jolt (zkVM via Lasso)          |
+| Phase | File                  | Topic                                          |
+|-------|-----------------------|------------------------------------------------|
+| 0     | `src/fields.rs`       | Finite Field Arithmetic                        |
+| 1     | `src/r1cs.rs`         | R1CS                                           |
+| 2     | `src/poly.rs`         | Univariate Polynomials                         |
+| 2.5   | `src/ec.rs`           | Elliptic Curves & Pairings *(optional)*        |
+| 3     | `src/qap.rs`          | QAP + Groth16 Trusted Setup *(optional)*       |
+| 4     | `src/mle.rs`          | Multilinear Extensions  ← **resume here**      |
+| 5     | `src/sumcheck.rs`     | Sum-Check Protocol                             |
+| 6     | `src/commitments.rs`  | Polynomial Commitments                         |
+| 7     | `src/spartan.rs`      | Spartan                                        |
+| 8a    | `src/lasso.rs`        | Lasso (Lookup Arguments)                       |
+| 8b    | `src/jolt.rs`         | Jolt (zkVM via Lasso)                          |
 
 ---
 
@@ -30,16 +31,14 @@
 **File:** `src/fields.rs`
 
 **Read first:**
-- [ ] RareSkills ZK Book → Module 1: "Finite Fields and Modular Arithmetic"
+- [x] RareSkills ZK Book → Module 1: "Finite Fields and Modular Arithmetic"
 
 **Tasks:**
-- [ ] Verify field axioms (closure, associativity, inverses) by hand on F_17 — write out the
-      multiplication table for a few elements and confirm every nonzero element has an inverse
-- [ ] Implement `fn inverse(a: F) -> F` via Fermat's little theorem: `a^(p-2) mod p`
+- [x] Implement `fn inverse(a: Fr) -> Fr` via Fermat's little theorem: `a^(p-2) mod p`
       (don't use `ark-ff`'s built-in inverse — compute it yourself using your `pow`)
-- [ ] Implement `fn pow(base: F, exp: u64) -> F` via square-and-multiply (binary exponentiation)
-- [ ] Write tests asserting `a * inverse(a) == F::ONE` for every nonzero element `a` in F_17
-- [ ] Write a test that `pow(a, 17) == a` for all `a` in F_17 (Fermat's little theorem check)
+- [x] Implement `fn pow(base: Fr, exp: u64) -> Fr` via square-and-multiply (binary exponentiation)
+- [x] Write tests asserting `a * inverse(a) == Fr::ONE` for every nonzero element `a` in F_17
+- [x] Write a test that `pow(a, 17) == a` for all `a` in F_17 (Fermat's little theorem check)
 
 **Milestone:**
 ```
@@ -54,18 +53,18 @@ All tests pass. Every nonzero element of F_17 inverts correctly.
 **File:** `src/r1cs.rs`
 
 **Read first:**
-- [ ] RareSkills ZK Book → Module 2: "Converting Algebraic Circuits to R1CS"
-- [ ] RareSkills ZK Book → Module 2: "Building ZKPs from R1CS"
+- [x] RareSkills ZK Book → Module 2: "Converting Algebraic Circuits to R1CS"
+- [x] RareSkills ZK Book → Module 2: "Building ZKPs from R1CS"
 
 **Tasks:**
-- [ ] Implement `fn is_satisfied(A: &Matrix, B: &Matrix, C: &Matrix, z: &Vec<F>) -> bool`
+- [x] Implement `fn is_satisfied(A: &Matrix, B: &Matrix, C: &Matrix, z: &Vec<F>) -> bool`
       that checks `(A·z) ∘ (B·z) == C·z` (Hadamard product of matrix-vector products)
-- [ ] Encode `x³ + x + 5 = 35` as R1CS by hand:
+- [x] Encode `x³ + x + 5 = 35` as R1CS by hand:
       - Introduce intermediate variables: `v1 = x * x`, `v2 = v1 * x`, `out = v2 + x + 5`
       - Write the witness vector `z = [1, out, x, v1, v2]` for `x = 3`
       - Write out matrices A, B, C as `Vec<Vec<F>>` in the source
-- [ ] Call `is_satisfied` on the x³ witness and assert it returns `true`
-- [ ] Encode a second program: a single Fibonacci step `(a, b) -> (b, a + b)`
+- [x] Call `is_satisfied` on the x³ witness and assert it returns `true`
+- [x] Encode a second program: a single Fibonacci step `(a, b) -> (b, a + b)`
       - Witness: `z = [1, a, b, a_next, b_next]` where `a_next = b`, `b_next = a + b`
       - Write the A, B, C matrices and verify with `is_satisfied`
 
@@ -82,19 +81,19 @@ Both R1CS instances satisfy their constraints.
 **File:** `src/poly.rs`
 
 **Read first:**
-- [ ] RareSkills ZK Book → Module 2: "Lagrange Interpolation"
-- [ ] RareSkills ZK Book → Module 2: "Schwartz-Zippel Lemma"
+- [x] RareSkills ZK Book → Module 2: "Lagrange Interpolation"
+- [x] RareSkills ZK Book → Module 2: "Schwartz-Zippel Lemma"
 
 **Tasks:**
-- [ ] Implement `fn lagrange_interpolate(points: &[(F, F)]) -> DensePolynomial<F>`
+- [x] Implement `fn lagrange_interpolate(points: &[(F, F)]) -> DensePolynomial<F>`
       using the Lagrange basis formula (do it manually, not via `ark-poly`'s interpolation)
-- [ ] Verify: construct a degree-2 polynomial `p(x) = x² + 2x + 3`, evaluate it at three points,
+- [x] Verify: construct a degree-2 polynomial `p(x) = x² + 2x + 3`, evaluate it at three points,
       then interpolate back from those evaluations and check coefficients match
-- [ ] Verify: interpolate from 5 points on a known degree-4 polynomial and recover it exactly
-- [ ] Implement `fn poly_eq_check(p: &DensePolynomial<F>, q: &DensePolynomial<F>, rng: &mut impl Rng) -> bool`
+- [x] Verify: interpolate from 5 points on a known degree-4 polynomial and recover it exactly
+- [x] Implement `fn poly_eq_check(p: &DensePolynomial<F>, q: &DensePolynomial<F>, rng: &mut impl Rng) -> bool`
       — evaluate both at a random field element and return whether they agree
       (this is the Schwartz-Zippel randomized polynomial equality test)
-- [ ] Write a test where `p != q` and confirm `poly_eq_check` returns `false` with high probability
+- [x] Write a test where `p != q` and confirm `poly_eq_check` returns `false` with high probability
       (run it 100 times and assert it never returns `true` for two distinct low-degree polys over F_17)
 
 **Milestone:**
@@ -105,29 +104,81 @@ Lagrange interpolation recovers known polynomials. Schwartz-Zippel check works.
 
 ---
 
-## Phase 3 — QAP (Quadratic Arithmetic Programs)
+## Phase 2.5 — Elliptic Curves & Pairings *(optional — not used in Jolt; background for KZG/Groth16)*
+
+**File:** `src/ec.rs`
+
+**Read first:**
+- [x] RareSkills ZK Book → "Elliptic Curves" section
+- [x] RareSkills ZK Book → "Bilinear Pairings" section
+
+**Tasks:**
+- [x] Explore `G1Affine`, `G2Affine`, and `Bls12_381::pairing`.
+      Write a small function that confirms bilinearity: `e([a]G1, [b]G2) == e([ab]G1, G2)` for
+      random scalars a, b.
+- [x] Implement scalar multiplication helper: `fn g1_mul(scalar: &Fr) -> G1Affine` (wraps
+      `G1Projective::generator() * scalar`). Same for G2. These are the "encrypted" values [s]G.
+- [x] Verify the linearity property used in all SNARKs: `[a]G + [b]G == [a+b]G` for G1 and G2.
+- [x] Write a test demonstrating why pairings enable verification without revealing secrets:
+      - Prover knows `s` (a secret), publishes `[s]G1` and `[s]G2`
+      - Verifier checks that both encode the same scalar: `e([s]G1, G2) == e(G1, [s]G2)`
+      - Verifier learns nothing about `s` itself
+
+**Milestone:**
+```
+cargo test ec
+```
+Bilinearity and linearity properties verified. Pairing consistency check passes.
+
+---
+
+## Phase 3 — QAP (Quadratic Arithmetic Programs) *(optional — Groth16 path, not used in Jolt)*
 
 **File:** `src/qap.rs`
 
 **Read first:**
-- [ ] RareSkills ZK Book → Module 2: "Quadratic Arithmetic Programs"
-- [ ] RareSkills ZK Book → Module 2: "R1CS to QAP over Finite Fields"
+- [x] RareSkills ZK Book → Module 2: "Quadratic Arithmetic Programs"
+- [x] RareSkills ZK Book → Module 2: "R1CS to QAP over Finite Fields"
+- [ ] RareSkills ZK Book → "Groth16 Trusted Setup" / Pinocchio paper Section 4
 
 **Tasks:**
-- [ ] Implement `fn r1cs_to_qap(A: &Matrix, B: &Matrix, C: &Matrix, domain: &[F]) -> (Vec<DensePolynomial<F>>, Vec<DensePolynomial<F>>, Vec<DensePolynomial<F>>, DensePolynomial<F>)`
+- [x] Implement `fn r1cs_to_qap(A: &Matrix, B: &Matrix, C: &Matrix, domain: &[F]) -> (Vec<DensePolynomial<F>>, Vec<DensePolynomial<F>>, Vec<DensePolynomial<F>>, DensePolynomial<F>)`
       — for each column of A, B, C, use Lagrange interpolation over `domain` to get polynomials U_i, V_i, W_i;
       return the vanishing polynomial `t(x) = ∏(x - domain[i])`
-- [ ] Implement `fn qap_verify(witness: &[F], U: &[DensePolynomial<F>], V: &[DensePolynomial<F>], W: &[DensePolynomial<F>], t: &DensePolynomial<F>, rng: &mut impl Rng) -> bool`
+- [x] Implement `fn qap_verify(witness: &[F], U: &[DensePolynomial<F>], V: &[DensePolynomial<F>], W: &[DensePolynomial<F>], t: &DensePolynomial<F>, rng: &mut impl Rng) -> bool`
       — compute `P(x) = (∑ aᵢ Uᵢ(x)) · (∑ aᵢ Vᵢ(x)) - (∑ aᵢ Wᵢ(x))` at a random point,
       check that `t(x) | P(x)` (i.e., `P(r) = H(r) · t(r)` for the quotient poly H)
-- [ ] Apply `r1cs_to_qap` to the Phase 1 x³ R1CS and run `qap_verify` with the correct witness
-- [ ] Manually verify one evaluation point to understand why Schwartz-Zippel makes this a succinct check
+- [x] Apply `r1cs_to_qap` to the Phase 1 x³ R1CS and run `qap_verify` with the correct witness
+- [x] Manually verify one evaluation point to understand why Schwartz-Zippel makes this a succinct check
+- [ ] Implement `fn trusted_setup(qap: &QAP, max_degree: usize) -> (ProverKey, VerifierKey)`:
+      - Sample random τ ∈ Fr (toxic waste — would be destroyed in a real ceremony)
+      - **ProverKey**: for each i, store `[Uᵢ(τ)]₁, [Vᵢ(τ)]₁, [Wᵢ(τ)]₁` in G1; also store
+        `[τ⁰]₁, ..., [τᵈ]₁` so the prover can evaluate H(τ) without knowing τ
+      - **VerifierKey**: store `[t(τ)]₁` (G1), `[t(τ)]₂` (G2), and the generator pair (G1, G2)
+      - Note: τ is only used to create group elements; the raw scalar τ is never exposed afterward
+- [ ] Implement `fn prove(pk: &ProverKey, witness: &[Fr]) -> Proof`:
+      - Compute `[A]₁ = ∑ aᵢ · [Uᵢ(τ)]₁` (linear combination in G1)
+      - Compute `[B]₁ = ∑ aᵢ · [Vᵢ(τ)]₁`
+      - Compute `[C]₁ = ∑ aᵢ · [Wᵢ(τ)]₁`
+      - Compute quotient polynomial H(x) = (U(x)·V(x) - W(x)) / t(x), then evaluate
+        `[H]₁ = ∑ hⱼ · [τʲ]₁` using stored powers in pk
+      - Return `Proof { A: G1Affine, B: G1Affine, C: G1Affine, H: G1Affine }`
+      - The prover never learns τ — it only uses pre-computed group elements from pk
+- [ ] Implement `fn verify(vk: &VerifierKey, proof: &Proof) -> bool`:
+      - Check: `e(proof.A, proof.B_G2) == e(proof.C, G2) · e(proof.H, vk.t_tau_G2)`
+      - The verifier sees only 4 group elements; the witness `z` is never given to the verifier
+- [ ] Test the full pipeline:
+      - `trusted_setup` → `prove` → `verify` on the Phase 1 x³ R1CS; assert accepts
+      - Tamper with `proof.C` (add a random G1 point) and assert verify rejects
+      - Write a comment: what does Phase 7 KZG add? (evaluation openings for arbitrary points,
+        not just τ; enables multivariate and multilinear commitments used in Spartan/Lasso)
 
 **Milestone:**
 ```
 cargo test qap
 ```
-QAP conversion and verification passes on the Phase 1 R1CS.
+QAP conversion, divisibility check, and the trusted-setup prover/verifier pipeline all pass.
+Invalid proofs are rejected.
 
 ---
 
@@ -136,18 +187,18 @@ QAP conversion and verification passes on the Phase 1 R1CS.
 **File:** `src/mle.rs`
 
 **Read first:**
-- [ ] Thaler "Proofs, Arguments, and Zero-Knowledge" Ch. 3 (free PDF) — MLEs and boolean hypercube sums
+- [x] Thaler "Proofs, Arguments, and Zero-Knowledge" Ch. 3 (free PDF) — MLEs and boolean hypercube sums
       (https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf)
 
 **Tasks:**
-- [ ] Implement `struct MultilinearExtension<F> { evals: Vec<F> }` where `evals` is a flat
+- [x] Implement `struct MultilinearExtension<F> { evals: Vec<F> }` where `evals` is a flat
       truth table over the boolean hypercube `{0,1}^k` (length must be a power of 2)
-- [ ] Implement `fn evaluate(&self, point: &[F]) -> F` using the bookkeeping algorithm:
+- [x] Implement `fn evaluate(&self, point: &[F]) -> F` using the bookkeeping algorithm:
       repeatedly fold the evaluation table — at step i, for challenge rᵢ:
       `new_evals[j] = (1 - rᵢ) * evals[2j] + rᵢ * evals[2j+1]`
-- [ ] Implement `fn eq(x: &[F], e: &[F]) -> F` — the equality polynomial:
+- [x] Implement `fn eq(x: &[F], e: &[F]) -> F` — the equality polynomial:
       `∏ᵢ (eᵢ · xᵢ + (1 - eᵢ)(1 - xᵢ))` — returns 1 if x == e as bits, 0 otherwise over booleans
-- [ ] Test: construct an MLE for the function `f(x₀, x₁) = x₀ + 2·x₁` over `{0,1}²`
+- [x] Test: construct an MLE for the function `f(x₀, x₁) = x₀ + 2·x₁` over `{0,1}²`
       (evals = [0, 1, 2, 3]), evaluate at `(1/2, 1/2)` and verify the result algebraically
 - [ ] Test: verify `∑_{x ∈ {0,1}^k} eq(x, e) = 1` for a few choices of `e ∈ {0,1}^k`
 
@@ -164,22 +215,22 @@ MLE evaluations match expected values. `eq` polynomial sums to 1.
 **File:** `src/sumcheck.rs`
 
 **Read first:**
-- [ ] Thaler Ch. 4 — The Sum-Check Protocol
+- [x] Thaler Ch. 4 — The Sum-Check Protocol
 - [ ] RareSkills ZK Book → any relevant section on interactive proofs
 
 **Tasks:**
-- [ ] Implement `struct SumCheckProver<F>` that, given an MLE `f` over `{0,1}^k` and claimed
+- [x] Implement `struct SumCheckProver<F>` that, given an MLE `f` over `{0,1}^k` and claimed
       sum `S`, produces a sequence of univariate polynomials `g₁, g₂, ..., gₖ` round by round
       - Round i: fix variables `r₁, ..., r_{i-1}`, sum over remaining free variables to get gᵢ
-- [ ] Implement `struct SumCheckVerifier<F>` that:
+- [x] Implement `struct SumCheckVerifier<F>` that:
       - Checks `g₁(0) + g₁(1) == S`
       - For each round i: checks `gᵢ(0) + gᵢ(1) == g_{i-1}(rᵢ₋₁)`, sends random challenge rᵢ
       - At the final round, makes an oracle query to `f(r₁, ..., rₖ)` to check consistency
-- [ ] Add Fiat-Shamir transform: replace verifier's random challenges with `hash(transcript so far)`
+- [x] Add Fiat-Shamir transform: replace verifier's random challenges with `hash(transcript so far)`
       so the protocol becomes non-interactive (use `ark-std`'s test RNG or a simple hash)
-- [ ] Test: construct an MLE for a known function, compute the true sum over `{0,1}^k` by brute force,
+- [x] Test: construct an MLE for a known function, compute the true sum over `{0,1}^k` by brute force,
       run the non-interactive proof, and verify it accepts
-- [ ] Test: tamper with the claimed sum (use `S + 1`) and verify the proof rejects
+- [x] Test: tamper with the claimed sum (use `S + 1`) and verify the proof rejects
 
 **Milestone:**
 ```
@@ -189,40 +240,12 @@ Sum-check prover/verifier work interactively and non-interactively. Tampering is
 
 ---
 
-## Phase 6 — Spartan
-
-**File:** `src/spartan.rs`
-
-**Read first:**
-- [ ] Spartan paper Sections 1–4: https://eprint.iacr.org/2019/550.pdf
-      (focus on the R1CS-to-sum-check reduction, not the commitment scheme yet)
-
-**Tasks:**
-- [ ] Implement `fn matrix_to_mle(M: &Matrix, num_vars: usize) -> MultilinearExtension<F>`
-      — flatten R1CS matrix entries into a `2k`-variate MLE `Ã(x, y)` where x indexes rows,
-      y indexes columns (use the MLE from Phase 4)
-- [ ] Implement the Spartan sum-check reduction for R1CS:
-      - Given witness `z`, compute the claim: `∑_{x∈{0,1}^k} eq(τ, x) · [Ã(x,·)·z̃ · B̃(x,·)·z̃ - C̃(x,·)·z̃] = 0`
-        where `τ` is a random vector (Verifier's challenge), and `z̃` is the MLE of the witness
-      - This reduces to a sum-check over `f(x) = eq(τ, x) · [...]`
-- [ ] Wire the reduction to your Phase 5 sum-check prover/verifier (no polynomial commitment needed)
-- [ ] Verify end-to-end on the Phase 1 x³ R1CS instance with the correct witness — proof should accept
-- [ ] Verify that using an incorrect witness causes the proof to reject
-
-**Milestone:**
-```
-cargo test spartan
-```
-Spartan proof accepts valid R1CS witness and rejects invalid one.
-
----
-
-## Phase 7 — Polynomial Commitments
+## Phase 6 — Polynomial Commitments
 
 **File:** `src/commitments.rs`
 
 **Read first:**
-- [ ] RareSkills ZK Book → Module 4 intro (inner product arguments / Bulletproofs)
+- [x] RareSkills ZK Book → Module 4 intro (inner product arguments / Bulletproofs)
 - [ ] RareSkills ZK Book → KZG commitment section
 - [ ] Spartan paper Section 5 (how Spartan plugs in a PCS to get succinctness)
 
@@ -234,9 +257,7 @@ Spartan proof accepts valid R1CS witness and rejects invalid one.
 - [ ] Read through `ark-poly-commit` crate to understand the `PolynomialCommitment` trait:
       - What does `commit`, `open`, and `check` do?
       - How does a commitment hide the polynomial while allowing evaluation proofs?
-- [ ] Write a comment block in `commitments.rs` explaining in your own words how Spartan uses the
-      PCS: what polynomial gets committed, what evaluation is opened, why this makes the proof succinct
-- [ ] (Optional) Implement KZG commitment using `ark-bls12-381`:
+- [ ] Implement KZG commitment using `ark-bls12-381` (EC basics from Phase 2.5 are required):
       - Setup: sample trusted `τ`, compute `[τ⁰]₁, [τ¹]₁, ..., [τᵈ]₁` in G₁
       - Commit: `C = ∑ coeffᵢ · [τⁱ]₁`
       - Open at `z`: compute quotient polynomial `q(x) = (p(x) - p(z)) / (x - z)`, send `[q(τ)]₁`
@@ -246,7 +267,41 @@ Spartan proof accepts valid R1CS witness and rejects invalid one.
 ```
 cargo test commitments
 ```
-Toy IPA proves and verifies. (Optional: KZG verify passes on a degree-3 polynomial.)
+Toy IPA proves and verifies. KZG verify passes on a degree-3 polynomial.
+
+---
+
+## Phase 7 — Spartan
+
+**File:** `src/spartan.rs`
+
+**Read first:**
+- [ ] Spartan paper Sections 1–4: https://eprint.iacr.org/2019/550.pdf
+      (focus on the R1CS-to-sum-check reduction, then Section 5 for how the PCS plugs in)
+
+**Tasks:**
+- [ ] Implement `fn matrix_to_mle(M: &Matrix, num_vars: usize) -> MultilinearExtension<F>`
+      — flatten R1CS matrix entries into a `2k`-variate MLE `Ã(x, y)` where x indexes rows,
+      y indexes columns (use the MLE from Phase 4)
+- [ ] Implement the Spartan sum-check reduction for R1CS:
+      - Given witness `z`, compute the claim: `∑_{x∈{0,1}^k} eq(τ, x) · [Ã(x,·)·z̃ · B̃(x,·)·z̃ - C̃(x,·)·z̃] = 0`
+        where `τ` is a random vector (Verifier's challenge), and `z̃` is the MLE of the witness
+      - This reduces to a sum-check over `f(x) = eq(τ, x) · [...]`
+- [ ] Wire the reduction to your Phase 5 sum-check prover/verifier (no polynomial commitment needed yet)
+- [ ] Verify end-to-end on the Phase 1 x³ R1CS instance with the correct witness — proof should accept
+- [ ] Verify that using an incorrect witness causes the proof to reject
+- [ ] Write a comment block in `spartan.rs` explaining in your own words how the PCS fits in:
+      what polynomial gets committed, what evaluation is opened, why this makes the proof succinct
+- [ ] **(Upgrade — wire in the Phase 6 KZG commitment)** Make the verifier truly succinct:
+      - Before the sum-check, commit to the witness MLE as a univariate via KZG
+      - At the end of sum-check, the prover opens the commitment at the final point `(r₁,...,rₖ)`
+      - The verifier checks the opening proof — now the verifier is truly a black-box arguer
+
+**Milestone:**
+```
+cargo test spartan
+```
+Spartan proof accepts valid R1CS witness and rejects invalid one.
 
 ---
 
@@ -337,14 +392,16 @@ Tier 2: Full execution trace for the tiny program proves and verifies.
 
 | Phase | Status |
 |-------|--------|
-| 0 — Finite Fields | `[ ]` |
-| 1 — R1CS | `[ ]` |
-| 2 — Univariate Polynomials | `[ ]` |
-| 3 — QAP | `[ ]` |
-| 4 — Multilinear Extensions | `[ ]` |
-| 5 — Sum-Check | `[ ]` |
-| 6 — Spartan | `[ ]` |
-| 7 — Polynomial Commitments | `[ ]` |
+| 0 — Finite Fields | `[x]` |
+| 1 — R1CS | `[x]` |
+| 2 — Univariate Polynomials | `[x]` |
+| 2.5 — Elliptic Curves & Pairings | `[optional]` |
+| 3 — QAP | `[optional]` |
+| 3 — QAP (trusted setup) | `[optional]` |
+| 4 — Multilinear Extensions | `[x]` |
+| 5 — Sum-Check | `[x]` |
+| 6 — Polynomial Commitments | `[ ]` |
+| 7 — Spartan | `[ ]` |
 | 8a — Lasso | `[ ]` |
 | 8b — Jolt Tier 1 | `[ ]` |
 | 8b — Jolt Tier 2 | `[ ]` |
