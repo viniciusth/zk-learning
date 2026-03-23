@@ -51,8 +51,8 @@ This is a ZK proof systems learning codebase. Each `src/*.rs` module corresponds
 | 3     | `qap.rs`          | QAP (R1CS → polynomial form)  | partial |
 | 4     | `mle.rs`          | Multilinear extensions        | scaffold|
 | 5     | `sumcheck.rs`     | Sum-check protocol            | scaffold|
-| 6     | `commitments.rs`  | KZG & IPA commitments         | scaffold|
-| 7     | `spartan.rs`      | Spartan SNARK                 | scaffold|
+| 6     | `commitments.rs`  | Pedersen & IPA commitments    | done    |
+| 7     | `spartan.rs`      | Spartan (naive, O(n) verifier)| done    |
 | 8a    | `lasso.rs`        | Lasso lookup arguments        | scaffold|
 | 8b    | `jolt.rs`         | Jolt zkVM (Lasso-based)       | scaffold|
 

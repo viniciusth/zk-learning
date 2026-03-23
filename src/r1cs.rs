@@ -13,7 +13,14 @@ use ark_ff::AdditiveGroup;
 
 pub type Matrix = Vec<Vec<Fr>>;
 
-fn dot(x: impl Iterator<Item = Fr>, y: impl Iterator<Item = Fr>) -> Fr {
+pub fn dot<T, U>(
+    x: impl Iterator<Item = T>,
+    y: impl Iterator<Item = U>,
+) -> <T as std::ops::Mul<U>>::Output
+where
+    T: std::ops::Mul<U>,
+    <T as std::ops::Mul<U>>::Output: std::iter::Sum,
+{
     x.zip(y).map(|(a, b)| a * b).sum()
 }
 
@@ -56,7 +63,7 @@ fn hadamard_mul(a: &Matrix, b: &Matrix) -> Matrix {
     c
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct R1CS {
     pub a: Matrix,
     pub b: Matrix,
@@ -215,7 +222,8 @@ pub mod tests {
         R1CS::new(a, b, c)
     }
 
-    // Computes valid witness for easy r1cs
+    /// Computes valid witness for hard r1cs
+    /// \[1, out, x, y, z, v1, v2, v3, v4\]
     pub fn hard_witness(x: Fr, y: Fr, z: Fr) -> Vec<Fr> {
         let v1 = x * x;
         let v2 = y * y;

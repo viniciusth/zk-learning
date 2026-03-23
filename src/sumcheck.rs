@@ -8,8 +8,6 @@
 //!   2. Implement a verifier: check round consistency; final oracle query to f(r₁,..,rₖ).
 //!   3. Add Fiat-Shamir to make the protocol non-interactive.
 
-use std::sync::Arc;
-
 use ark_bls12_381::Fr;
 use ark_ff::{AdditiveGroup, Field};
 use ark_poly::{DenseUVPolynomial, Polynomial, univariate::DensePolynomial};
@@ -19,14 +17,14 @@ use crate::{fields::random_element, poly::lagrange_interpolate};
 
 #[derive(Debug, Clone)]
 pub struct SumCheckProver<F: Fn(&[Fr]) -> Fr> {
-    f: Arc<F>,
+    f: Box<F>,
     input_len: usize,
     queries: Vec<Fr>,
     degree: usize,
 }
 
 impl<F: Fn(&[Fr]) -> Fr> SumCheckProver<F> {
-    pub fn new(f: Arc<F>, input_len: usize, degree: usize) -> Self {
+    pub fn new(f: Box<F>, input_len: usize, degree: usize) -> Self {
         Self {
             f,
             input_len,
@@ -59,6 +57,7 @@ impl<F: Fn(&[Fr]) -> Fr> SumCheckProver<F> {
                 for j in 0..left - 1 {
                     i_decomp.push(Fr::from((i >> j) & 1));
                 }
+                i_decomp.reverse();
                 // Sum-check works for polynomials of any degree, for a degree of d, we need d+1
                 // points to fully determine the polynomial that represents g_j(x)
                 let mut v = vec![];
@@ -106,21 +105,23 @@ fn hash(coeffs: Vec<Fr>) -> Fr {
     DensePolynomial { coeffs }.evaluate(&len)
 }
 
-pub struct SumCheckVerifier {
+pub struct SumCheckVerifier<F: FnOnce(&[Fr]) -> Fr> {
     rng: ThreadRng,
     queries: Vec<Fr>,
     polys: Vec<DensePolynomial<Fr>>,
     sum: Fr,
+    oracle: Box<F>,
 }
 
 // Order of execution is new -> verify_challenge -> produce_challenge -> verify_challenge...
-impl SumCheckVerifier {
-    pub fn new(sum: Fr) -> Self {
+impl<F: FnOnce(&[Fr]) -> Fr> SumCheckVerifier<F> {
+    pub fn new(sum: Fr, oracle: Box<F>) -> Self {
         Self {
             rng: rng(),
             queries: vec![],
             polys: vec![],
             sum,
+            oracle,
         }
     }
 
@@ -147,31 +148,31 @@ impl SumCheckVerifier {
         }
     }
 
-    pub fn finish<T: Fn(&[Fr]) -> Fr>(self, oracle: T) -> bool {
+    pub fn finish(self) -> bool {
         let poly = self.polys.last().unwrap();
-        oracle(&self.queries) == poly.evaluate(self.queries.last().unwrap())
+        (self.oracle)(&self.queries) == poly.evaluate(self.queries.last().unwrap())
     }
 }
 
-pub fn run_sum_check<T: Fn(Fr) -> SumCheckVerifier, F: Fn(&[Fr]) -> Fr>(
+pub fn run_sum_check<F: Fn(&[Fr]) -> Fr, G: FnOnce(&[Fr]) -> Fr, T: FnOnce(Fr) -> SumCheckVerifier<G>>(
     mut prover: SumCheckProver<F>,
     create_verifier: T,
-) -> bool {
+) -> (bool, Fr) {
     let sum = prover.H();
     let mut verifier = create_verifier(sum);
     for _ in 0..prover.input_len {
         let poly = prover.next();
         if !verifier.verify_challenge(poly) {
-            return false;
+            return (false, sum);
         }
         let challenge = verifier.produce_challenge();
         prover.challenge(challenge);
     }
-    verifier.finish(|x: &[Fr]| prover.oracle(x))
+    (verifier.finish(), sum)
 }
 
 // Hacky to not have to reimplement fully, assume verifier and prover are the same struct
-pub fn run_sum_check_non_interactive<T: Fn(Fr) -> SumCheckVerifier, F: Fn(&[Fr]) -> Fr>(
+pub fn run_sum_check_non_interactive<F: Fn(&[Fr]) -> Fr, G: Fn(&[Fr]) -> Fr, T: Fn(Fr) -> SumCheckVerifier<G>>(
     mut prover: SumCheckProver<F>,
     create_verifier: T,
 ) -> bool {
@@ -188,13 +189,11 @@ pub fn run_sum_check_non_interactive<T: Fn(Fr) -> SumCheckVerifier, F: Fn(&[Fr])
         verifier.add_challenge(challenge);
         prover.challenge(challenge);
     }
-    verifier.finish(|x: &[Fr]| prover.oracle(x))
+    verifier.finish()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use ark_bls12_381::Fr;
     use ark_ff::{AdditiveGroup, Field};
 
@@ -217,16 +216,17 @@ mod tests {
         }
 
         let mle = MultilinearExtension::new(f);
-        let f = Arc::new(|x: &[Fr]| mle.evaluate(x));
-        let prover = SumCheckProver::new(f, 2, 1);
+        let f = Box::new(|x: &[Fr]| mle.evaluate(x));
+        let prover = SumCheckProver::new(f.clone(), 2, 1);
         assert!(run_sum_check(prover.clone(), |sum: Fr| {
-            SumCheckVerifier::new(sum)
-        }));
+            SumCheckVerifier::new(sum, f.clone())
+        }).0);
 
         // Tampering with sum breaks the verifier
         assert!(!run_sum_check(prover, |sum: Fr| SumCheckVerifier::new(
-            sum + Fr::ONE
-        )));
+            sum + Fr::ONE,
+            f.clone()
+        )).0);
     }
 
     #[test]
@@ -237,15 +237,15 @@ mod tests {
         }
 
         let mle = MultilinearExtension::new(f);
-        let f = Arc::new(|x: &[Fr]| mle.evaluate(x));
-        let prover = SumCheckProver::new(f, 2, 1);
+        let f = Box::new(|x: &[Fr]| mle.evaluate(x));
+        let prover = SumCheckProver::new(f.clone(), 2, 1);
         assert!(run_sum_check_non_interactive(prover.clone(), |sum: Fr| {
-            SumCheckVerifier::new(sum)
+            SumCheckVerifier::new(sum, f.clone())
         }));
 
         // Tampering with sum breaks the verifier
         assert!(!run_sum_check_non_interactive(prover, |sum: Fr| {
-            SumCheckVerifier::new(sum + Fr::ONE)
+            SumCheckVerifier::new(sum + Fr::ONE, f.clone())
         }));
     }
 }

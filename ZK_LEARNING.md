@@ -246,28 +246,21 @@ Sum-check prover/verifier work interactively and non-interactively. Tampering is
 
 **Read first:**
 - [x] RareSkills ZK Book → Module 4 intro (inner product arguments / Bulletproofs)
-- [ ] RareSkills ZK Book → KZG commitment section
-- [ ] Spartan paper Section 5 (how Spartan plugs in a PCS to get succinctness)
 
 **Tasks:**
-- [ ] Implement a toy inner-product argument over `F` (no elliptic curves):
-      `fn prove_inner_product(a: &[F], b: &[F]) -> IpaProof<F>` — recursively halve the vectors,
-      sending `L = <a_left, b_right>` and `R = <a_right, b_left>` each round
-- [ ] Implement `fn verify_inner_product(proof: &IpaProof<F>, commitment: F, target: F) -> bool`
-- [ ] Read through `ark-poly-commit` crate to understand the `PolynomialCommitment` trait:
-      - What does `commit`, `open`, and `check` do?
-      - How does a commitment hide the polynomial while allowing evaluation proofs?
-- [ ] Implement KZG commitment using `ark-bls12-381` (EC basics from Phase 2.5 are required):
-      - Setup: sample trusted `τ`, compute `[τ⁰]₁, [τ¹]₁, ..., [τᵈ]₁` in G₁
-      - Commit: `C = ∑ coeffᵢ · [τⁱ]₁`
-      - Open at `z`: compute quotient polynomial `q(x) = (p(x) - p(z)) / (x - z)`, send `[q(τ)]₁`
-      - Verify: check pairing equation `e(C - p(z)·G, H) == e([q(τ)]₁, [τ]₂ - z·H)` using ark's pairing
+- [x] Implement Pedersen vector commitment: `C = <v, G> + s*B`
+- [x] Implement Pedersen polynomial commitment with per-coefficient blinding
+- [x] Implement full Bulletproofs-style inner product argument (IPA) with EC:
+      - ZK hiding via blinding polynomials l(x), r(x) and commitment to t(x) = l(x)·r(x)
+      - Recursive halving IPA proof: L, R commitments each round, challenge-based folding
+      - Verifier reconstructs folded generator via scalar accumulation
+- [x] Tests: IPA accepts honest proofs, rejects with random perturbation (evil_odds)
 
 **Milestone:**
 ```
 cargo test commitments
 ```
-Toy IPA proves and verifies. KZG verify passes on a degree-3 polynomial.
+Pedersen commitment and IPA both pass. Evil prover is caught.
 
 ---
 
@@ -276,26 +269,27 @@ Toy IPA proves and verifies. KZG verify passes on a degree-3 polynomial.
 **File:** `src/spartan.rs`
 
 **Read first:**
-- [ ] Spartan paper Sections 1–4: https://eprint.iacr.org/2019/550.pdf
-      (focus on the R1CS-to-sum-check reduction, then Section 5 for how the PCS plugs in)
+- [x] Spartan paper (full): https://eprint.iacr.org/2019/550.pdf
 
 **Tasks:**
-- [ ] Implement `fn matrix_to_mle(M: &Matrix, num_vars: usize) -> MultilinearExtension<F>`
-      — flatten R1CS matrix entries into a `2k`-variate MLE `Ã(x, y)` where x indexes rows,
-      y indexes columns (use the MLE from Phase 4)
-- [ ] Implement the Spartan sum-check reduction for R1CS:
-      - Given witness `z`, compute the claim: `∑_{x∈{0,1}^k} eq(τ, x) · [Ã(x,·)·z̃ · B̃(x,·)·z̃ - C̃(x,·)·z̃] = 0`
-        where `τ` is a random vector (Verifier's challenge), and `z̃` is the MLE of the witness
-      - This reduces to a sum-check over `f(x) = eq(τ, x) · [...]`
-- [ ] Wire the reduction to your Phase 5 sum-check prover/verifier (no polynomial commitment needed yet)
-- [ ] Verify end-to-end on the Phase 1 x³ R1CS instance with the correct witness — proof should accept
-- [ ] Verify that using an incorrect witness causes the proof to reject
-- [ ] Write a comment block in `spartan.rs` explaining in your own words how the PCS fits in:
-      what polynomial gets committed, what evaluation is opened, why this makes the proof succinct
-- [ ] **(Upgrade — wire in the Phase 6 KZG commitment)** Make the verifier truly succinct:
-      - Before the sum-check, commit to the witness MLE as a univariate via KZG
-      - At the end of sum-check, the prover opens the commitment at the final point `(r₁,...,rₖ)`
-      - The verifier checks the opening proof — now the verifier is truly a black-box arguer
+- [x] Pad R1CS instance and witness to power-of-2 dimensions:
+      - Witness split into public/private halves for Z~(ry) decomposition
+      - Matrices padded to square m×m with zero rows/columns
+- [x] Compute Az~, Bz~, Cz~ as k-variate MLEs via matrix-vector products
+- [x] **Sum-check #1:** Prove `∑_x eq(τ,x) · [Az~(x)·Bz~(x) - Cz~(x)] = 0`
+      - Prover evaluates the degree-3 expression directly (not an MLE of it!)
+      - Verifier checks claimed sum = 0
+- [x] **Sum-check #2:** Verify prover's claimed v_A, v_B, v_C via random linear combination
+      - Compute A~(r_x, ·), B~(r_x, ·), C~(r_x, ·) by weighting rows with eq(r_x, i)
+      - Prove `r_A·v_A + r_B·v_B + r_C·v_C = ∑_y [r_A·A~(r_x,y) + ...]·Z~(y)`
+      - Verifier checks claimed sum matches expected
+- [x] **Z~ decomposition:** Split witness MLE evaluation using MSB selector:
+      `Z~(ry) = (1-ry[0])·public~(ry[1:]) + ry[0]·private~(ry[1:])`
+      (private half is where a PCS opening would go)
+- [x] Test: valid witness accepted on hard R1CS `(x²-y²)² + 7xyz`
+- [x] Test: tampered witness (wrong output) rejected via sum=0 check
+- [ ] *(Optional)* Wire `ark-poly-commit` Hyrax PCS to replace the fake private MLE evaluation
+      with a real commitment + opening proof
 
 **Milestone:**
 ```
@@ -400,8 +394,8 @@ Tier 2: Full execution trace for the tiny program proves and verifies.
 | 3 — QAP (trusted setup) | `[optional]` |
 | 4 — Multilinear Extensions | `[x]` |
 | 5 — Sum-Check | `[x]` |
-| 6 — Polynomial Commitments | `[ ]` |
-| 7 — Spartan | `[ ]` |
+| 6 — Polynomial Commitments | `[x]` (IPA/Bulletproofs done; multilinear PCS as black box) |
+| 7 — Spartan | `[x]` (naive O(n) verifier; SPARK/PCS wiring optional) |
 | 8a — Lasso | `[ ]` |
 | 8b — Jolt Tier 1 | `[ ]` |
 | 8b — Jolt Tier 2 | `[ ]` |

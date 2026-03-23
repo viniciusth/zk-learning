@@ -25,33 +25,33 @@ impl MultilinearExtension {
         Self { f, k }
     }
 
-    fn nxor(x: Fr, y: Fr) -> Fr {
+    pub fn eq(x: Fr, y: Fr) -> Fr {
         x * y + (Fr::ONE - x) * (Fr::ONE - y)
     }
 
     pub fn evaluate(&self, point: &[Fr]) -> Fr {
         assert_eq!(point.len(), self.k);
 
-        // Precompute dp[i] = ∏_j nxor(point[j], (i >> j) & 1)
+        // Precompute dp[i] = ∏_j eq(point[j], (i >> j) & 1)
         // f^~(point) = ∑_i f(point) * dp[i]
         let mut dp = vec![Fr::ONE; self.f.len()];
         // dp[ø] = 1 (identity of multiplication for everyone)
         // ---
-        // dp[0] = nxor(point[0], 0)
-        // dp[1] = nxor(point[0], 1)
+        // dp[0] = eq(point[0], 0)
+        // dp[1] = eq(point[0], 1)
         // --
-        // dp[00] = dp[0] * nxor(point[1], 0)
-        // dp[01] = dp[0] * nxor(point[1], 1)
+        // dp[00] = dp[0] * eq(point[1], 0)
+        // dp[01] = dp[0] * eq(point[1], 1)
         // ...
         // --
-        // dp[S U 0] *= dp[S] * nxor(point[|S|], 0)
-        // dp[S U 1] *= dp[S] * nxor(point[|S|], 1)
+        // dp[S U 0] *= dp[S] * eq(point[|S|], 0)
+        // dp[S U 1] *= dp[S] * eq(point[|S|], 1)
         // point[0] is the MSB, we start with it and push it forward every iteration
         for j in 0..self.k {
             let sz = 1 << j;
             for i in (0..sz).rev() {
-                dp[i * 2 + 1] = dp[i] * Self::nxor(point[j], Fr::ONE);
-                dp[i * 2] = dp[i] * Self::nxor(point[j], Fr::ZERO);
+                dp[i * 2 + 1] = dp[i] * Self::eq(point[j], Fr::ONE);
+                dp[i * 2] = dp[i] * Self::eq(point[j], Fr::ZERO);
             }
         }
 
