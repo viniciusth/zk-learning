@@ -304,25 +304,74 @@ Spartan proof accepts valid R1CS witness and rejects invalid one.
 **File:** `src/lasso.rs`
 
 **Read first:**
-- [ ] Lasso paper Sections 1–3: https://eprint.iacr.org/2023/1216.pdf
-      (focus on how table lookups are encoded as multilinear sums)
+- [ ] Lasso paper (full): https://eprint.iacr.org/2023/1216.pdf
+- [ ] Write `lasso-re.md` or `.tex` — own re-explanation of the paper
 
-**Tasks:**
+### 8a.1 — Core concepts
+
+- [ ] Understand the lookup problem: prover claims "every value in my list is in table T"
+      without the verifier reading the full table
 - [ ] Understand how a lookup table T of size N is encoded as an MLE `T̃(x)` over `{0,1}^{log N}`
-- [ ] Build a concrete lookup table: the 4-bit AND table (256 entries: T[a][b] = a AND b for a,b ∈ {0,1}⁴)
-      — encode it as an MLE over `{0,1}⁸`
-- [ ] Implement a toy Lasso prover for a small sequence of lookups into the AND table:
-      - Represent lookup indices as field elements, build the multiset `{T[iⱼ]}` for queried indices
-      - Implement the offline memory checking argument: show all reads are to previously written cells
-- [ ] Implement `fn lasso_verify(table_mle: &MLE, queries: &[F], values: &[F]) -> bool`
-- [ ] Test: prove that 10 lookups into the AND table are all valid (pre-chosen query-value pairs)
-- [ ] Test: try to prove a lookup where the value doesn't match the table entry — verify it rejects
+- [ ] Understand the offline memory checking approach to lookups:
+      - The "memory" is the table T, "reads" are the lookups
+      - Timestamps track which cells were accessed and when
+      - Multiset equality check: Init * Writes = Reads * Final (as multiset hashes)
+      - How this reduces to sum-check over the boolean hypercube
+- [ ] Understand Lasso's key innovation: **sparse lookups into structured tables**
+      - Decomposable tables: T(x) = g(T_1(x_1), T_2(x_2), ..., T_c(x_c))
+      - Why this matters: table of size N = n^c only requires subtables of size n
+      - The "surge" counting argument: instead of full memory checking, count how many
+        times each subtable entry is accessed
+
+### 8a.2 — Implement basic (unstructured) Lasso
+
+- [ ] Build a concrete lookup table: the 4-bit AND table (256 entries: T[a‖b] = a AND b)
+      — encode it as an MLE over `{0,1}^8`
+- [ ] Implement the offline memory checking argument for lookups:
+      - Prover provides: read timestamps, write timestamps, final timestamps
+      - Multiset hash: h(addr, val, ts) = addr·γ² + val·γ + ts, then product over all entries
+      - Sum-check to verify the multiset equality (reduce product check to sum via logs or
+        the grand product argument)
+- [ ] Implement `fn lasso_prove(table: &MLE, lookups: &[usize]) -> LassoProof`
+- [ ] Implement `fn lasso_verify(table: &MLE, proof: &LassoProof) -> bool`
+- [ ] Test: prove 10 valid lookups into the AND table — accepts
+- [ ] Test: prove a lookup with a wrong value — rejects
+
+### 8a.3 — Implement structured (decomposable) Lasso
+
+- [ ] Understand the surge counting argument:
+      - For each subtable T_i, the prover provides a "count" MLE: how many lookups hit each entry
+      - Sum-check verifies: ∑_j count_i(j) · T_i(j) matches the claimed lookup values
+      - The counts must be nonneg integers — enforced via a separate sum-check on the counts
+- [ ] Build a decomposable table: 8-bit AND = combine two 4-bit AND subtables
+      T(a‖b) = (a_hi AND b_hi) ‖ (a_lo AND b_lo)
+      — each subtable has only 16 entries instead of 256
+- [ ] Implement the decomposed Lasso prover:
+      - Decompose each lookup index into chunks
+      - For each subtable, compute the count vector (how many times each entry is accessed)
+      - Prove via sum-check that the counts are consistent with the lookup values
+- [ ] Implement the decomposed Lasso verifier
+- [ ] Test: prove 20 lookups into the decomposed 8-bit AND table — accepts
+- [ ] Test: wrong lookup value — rejects
+- [ ] Write a comment block: what is the cost difference between unstructured and decomposed?
+      (O(N) vs O(c · n) where N = n^c)
+
+### 8a.4 — Theoretical understanding
+
+- [ ] Write up (in comments or a .md) the full cost analysis:
+      - Prover: O(m + c·n) where m = number of lookups, n = subtable size, c = decomposition arity
+      - Verifier: O(m + c·n) (or sub-linear with PCS)
+      - Communication: O(c · log(n)) sum-check rounds
+- [ ] Understand how Lasso compares to prior lookup arguments (Plookup, cq, etc.):
+      - Lasso avoids sorting and FFTs
+      - Lasso's cost scales with the number of lookups, not the table size
+      - The "pay for what you use" property
 
 **Milestone:**
 ```
 cargo test lasso
 ```
-Lasso prover/verifier accepts valid AND-table lookups and rejects invalid ones.
+Both unstructured and decomposed Lasso accept valid lookups and reject invalid ones.
 
 ---
 
@@ -333,38 +382,107 @@ Lasso prover/verifier accepts valid AND-table lookups and rejects invalid ones.
 > **Note:** Complete Phase 8a before starting here. Jolt is Lasso applied at scale to RISC-V.
 
 **Read first:**
-- [ ] Jolt paper: https://eprint.iacr.org/2023/1217.pdf
-- [ ] RISC-V ISA spec, RV32I base integer instruction set (just the ADD, XOR, BEQ instructions)
+- [ ] Jolt paper (full): https://eprint.iacr.org/2023/1217.pdf
+- [ ] Write `jolt-re.md` or `.tex` — own re-explanation of the paper
+- [ ] RISC-V ISA spec, RV32I base integer instruction set
       (https://riscv.org/technical/specifications/)
+      (focus on: ADD, SUB, XOR, AND, OR, SLT, BEQ, LW, SW — enough to understand decomposition)
 
-**Tier 1 — Conceptual (implement these first):**
-- [ ] Read Jolt Section 3: understand how each RISC-V instruction is decomposed into sub-table lookups
-      (e.g., ADD decomposes into 8 lookups into a chunk addition table)
-- [ ] Implement a single `ADD` instruction step using Lasso:
-      - Decompose two 32-bit operands into 4-bit chunks
-      - Build a "chunk-ADD" subtable: T[a][b] = a + b (4-bit + 4-bit, carry out separate)
-      - Prove the ADD result via 8 Lasso lookups + carry propagation
-- [ ] Implement a single `XOR` instruction step using Lasso:
-      - XOR decomposes cleanly: T[a][b] = a XOR b, reuse 4-bit chunks
-      - Prove the XOR result via 8 Lasso lookups
-- [ ] Write a toy execution trace for a 4-instruction program: `x = 2 + 3; y = x XOR 1; z = x + y`
-      — represent the trace as a table of (PC, opcode, rs1, rs2, rd, result)
+### 8b.1 — Instruction decomposition
 
-**Tier 2 — Full zkVM path (implement after Tier 1 is solid):**
-- [ ] Implement execution trace proving: given a full trace table, encode each column as an MLE
-      and use sum-check to prove the trace is consistent with the instruction semantics
-- [ ] Wire Lasso to prove every instruction in the trace is correctly executed (batch Lasso)
-- [ ] Add a simple memory consistency check: prove that load/store operations see correct values
-      (use the offline memory checking approach from Phase 8a)
-- [ ] Test: run a tiny RISC-V program (e.g., sum of a 4-element array using a loop),
-      generate the execution trace, and produce a full Jolt proof that accepts
+- [ ] Understand Jolt's core idea: every RISC-V instruction is a lookup into a giant
+      "instruction table" that maps (opcode, operand1, operand2) → result
+      — this table is astronomically large but decomposable
+- [ ] Understand how each instruction decomposes into subtable lookups:
+      - ADD: chunk-wise addition with carry propagation
+      - XOR/AND/OR: chunk-wise bitwise ops (no carry, trivially decomposable)
+      - SLT (set less than): chunk-wise comparison with prefix-based resolution
+      - BEQ: equality check via subtraction + zero test
+- [ ] Implement a single instruction's subtable decomposition by hand:
+      - Pick ADD (most instructive due to carries)
+      - Decompose two 32-bit operands into C chunks of c bits each (e.g., C=4 chunks of 8 bits)
+      - Build the subtables: T_add[a][b] = a + b, T_carry[a][b] = (a+b) >= 2^c
+      - Show how the full ADD result is reconstructed from chunk results + carries
+- [ ] Implement a single XOR instruction decomposition (simpler: no carries)
+
+### 8b.2 — Single instruction proving
+
+- [ ] Implement `fn prove_instruction(opcode: Op, x: u32, y: u32) -> InstructionProof`
+      that proves a single instruction execution via Lasso lookups into subtables
+- [ ] Implement the corresponding verifier
+- [ ] Test: prove ADD(7, 13) = 20 — accepts
+- [ ] Test: prove ADD(7, 13) = 21 — rejects
+- [ ] Test: prove XOR(0xFF, 0x0F) = 0xF0 — accepts
+- [ ] Test: repeat for AND, OR, SLT
+
+### 8b.3 — Execution traces
+
+- [ ] Understand Jolt's execution trace structure:
+      - Each row: (PC, opcode, rs1_val, rs2_val, rd, result, next_PC)
+      - The trace is a table of m rows (m = number of steps)
+      - Each column is encoded as an MLE over {0,1}^{log m}
+- [ ] Implement trace generation for a simple program:
+      ```
+      x = 2 + 3      // ADD
+      y = x XOR 1    // XOR
+      z = x + y      // ADD
+      w = z AND 0xFF // AND
+      ```
+      Generate the full execution trace as a table
+- [ ] Encode each column as an MLE
+
+### 8b.4 — Batch instruction proving
+
+- [ ] Understand how Jolt batches all instruction proofs:
+      - All m instruction executions use the SAME subtables
+      - The count vectors aggregate across all instructions
+      - One Lasso proof covers the entire trace, not one per instruction
+- [ ] Implement batch proving: given a full trace, produce a single Jolt proof
+      - For each subtable, aggregate count vectors across all instructions in the trace
+      - Run Lasso once per subtable with the aggregated counts
+- [ ] Implement batch verification
+- [ ] Test: prove the 4-instruction program trace — accepts
+- [ ] Test: tamper with one instruction's result in the trace — rejects
+
+### 8b.5 — R1CS for control flow + memory
+
+- [ ] Understand what Lasso does NOT prove:
+      - Lasso proves each instruction computes the right output
+      - But it doesn't prove: correct program counter transitions, correct register reads/writes,
+        correct memory load/store
+- [ ] Understand how Jolt handles these via a small R1CS:
+      - PC consistency: next_PC follows from opcode + branch condition
+      - Register consistency: the value read from rs1 matches what was last written to rs1
+      - Memory consistency: offline memory checking (same technique as Lasso, applied to memory)
+- [ ] Implement register consistency via offline memory checking:
+      - Memory = register file (32 registers)
+      - Each instruction reads 2 registers and writes 1
+      - Prove all reads see the most recent write via timestamp argument
+- [ ] *(Optional)* Implement RAM memory consistency for LW/SW instructions
+- [ ] Test: trace with correct register threading — accepts
+- [ ] Test: trace with wrong register value (read stale data) — rejects
+
+### 8b.6 — Theoretical understanding
+
+- [ ] Write up the full Jolt cost analysis:
+      - Prover: O(m · C · c) where m = trace length, C = chunks per instruction, c = chunk bit-width
+      - Why this is "close to O(m)" in practice
+      - Verifier: O(m) or sub-linear with PCS
+      - Comparison with other zkVMs (STARK-based: O(m · log m), Groth16-based: O(m · log m) + trusted setup)
+- [ ] Understand the "1 cryptographic operation per step" claim:
+      - Each trace step requires ~1 MSM (multi-scalar multiplication) worth of prover work
+      - This is the information-theoretic minimum for any commitment-based scheme
+- [ ] Write up: what makes Jolt fundamentally faster than circuit-based zkVMs?
+      - No arithmetization of instruction logic — lookups replace circuits
+      - Subtable decomposition avoids exponential table sizes
+      - Sum-check is naturally parallelizable
 
 **Milestone:**
 ```
 cargo test jolt
 ```
-Tier 1: ADD and XOR instruction steps verified via Lasso.
-Tier 2: Full execution trace for the tiny program proves and verifies.
+Single instructions proved via Lasso. Full execution trace (4+ instructions) with register
+consistency proved and verified. Tampered traces rejected.
 
 ---
 
